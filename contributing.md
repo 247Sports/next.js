@@ -1,4 +1,4 @@
-# Contributing to Next.js
+# Contributing to Next.js test
 
 [Watch the 40-minute walkthrough video on how to contribute to Next.js.](https://www.youtube.com/watch?v=cuoNzXFLitc)
 

@@ -481,7 +481,7 @@ function fetchNextData({
               return { dataHref, response, text, json: {} }
             }
 
-            if (!hasMiddleware && response.status === 404) {
+            if (response.status === 404) {
               if (tryToParseAsJSON(text)?.notFound) {
                 return {
                   dataHref,
@@ -489,6 +489,16 @@ function fetchNextData({
                   response,
                   text,
                 }
+              }
+
+              /**
+               * If there is a 404 that is not for SSG we used to fail but if
+               * there is a middleware we must respond with an empty object.
+               * For now we will return the data when there is a middleware.
+               * TODO: Update the server to success on these requests.
+               */
+              if (hasMiddleware) {
+                return { dataHref, response, text, json: {} }
               }
             }
 
@@ -1128,10 +1138,16 @@ export default class Router implements BaseRouter {
       nextState.asPath = cleanedAs
       Router.events.emit('hashChangeStart', as, routeProps)
       // TODO: do we need the resolved href when only a hash change?
-      this.changeState(method, url, as, {
-        ...options,
-        scroll: false,
-      })
+      this.changeState(
+        method,
+        url,
+        as,
+        {
+          ...options,
+          scroll: false,
+        },
+        cleanedAs
+      )
       if (scroll) {
         this.scrollToHash(cleanedAs)
       }
@@ -1337,10 +1353,7 @@ export default class Router implements BaseRouter {
       if ('route' in routeInfo && isMiddlewareMatch) {
         pathname = routeInfo.route || route
         route = pathname
-
-        if (!routeProps.shallow) {
-          query = Object.assign({}, routeInfo.query || {}, query)
-        }
+        query = Object.assign({}, routeInfo.query || {}, query)
 
         if (routeMatch && pathname !== parsed.pathname) {
           Object.keys(routeMatch).forEach((key) => {
@@ -1352,15 +1365,8 @@ export default class Router implements BaseRouter {
 
         if (isDynamicRoute(pathname)) {
           const prefixedAs =
-            !routeProps.shallow && routeInfo.resolvedAs
-              ? routeInfo.resolvedAs
-              : addBasePath(
-                  addLocale(
-                    new URL(as, location.href).pathname,
-                    nextState.locale
-                  ),
-                  true
-                )
+            routeInfo.resolvedAs ||
+            addBasePath(addLocale(as, nextState.locale), true)
 
           let rewriteAs = prefixedAs
 
@@ -1466,7 +1472,7 @@ export default class Router implements BaseRouter {
       }
 
       Router.events.emit('beforeHistoryChange', as, routeProps)
-      this.changeState(method, url, as, options)
+      this.changeState(method, url, as, options, cleanedAs)
 
       if (
         isQueryUpdating &&
@@ -1555,7 +1561,8 @@ export default class Router implements BaseRouter {
     method: HistoryMethod,
     url: string,
     as: string,
-    options: TransitionOptions = {}
+    options: TransitionOptions = {},
+    baselessAs?: string
   ): void {
     if (process.env.NODE_ENV !== 'production') {
       if (typeof window.history === 'undefined') {
@@ -1583,7 +1590,7 @@ export default class Router implements BaseRouter {
         // Passing the empty string here should be safe against future changes to the method.
         // https://developer.mozilla.org/en-US/docs/Web/API/History/replaceState
         '',
-        as
+        baselessAs || as
       )
     }
   }
@@ -1701,10 +1708,6 @@ export default class Router implements BaseRouter {
         return existingInfo
       }
 
-      if (hasMiddleware) {
-        existingInfo = undefined
-      }
-
       let cachedRouteInfo =
         existingInfo &&
         !('initial' in existingInfo) &&
@@ -1763,6 +1766,13 @@ export default class Router implements BaseRouter {
           this.components[requestedRoute] = { ...existingInfo, route }
           return { ...existingInfo, route }
         }
+
+        cachedRouteInfo =
+          existingInfo &&
+          !('initial' in existingInfo) &&
+          process.env.NODE_ENV !== 'development'
+            ? existingInfo
+            : undefined
       }
 
       if (route === '/api' || route.startsWith('/api/')) {
@@ -2331,14 +2341,7 @@ function getMiddlewareData<T extends FetchDataOutput>(
 
   const matchedPath = response.headers.get('x-matched-path')
 
-  if (
-    matchedPath &&
-    !rewriteTarget &&
-    !matchedPath.includes('__next_data_catchall') &&
-    !matchedPath.includes('/_error') &&
-    !matchedPath.includes('/404')
-  ) {
-    // leverage x-matched-path to detect next.config.js rewrites
+  if (!rewriteTarget && !matchedPath?.includes('__next_data_catchall')) {
     rewriteTarget = matchedPath
   }
 
@@ -2350,7 +2353,7 @@ function getMiddlewareData<T extends FetchDataOutput>(
         parseData: true,
       })
 
-      let fsPathname = removeTrailingSlash(pathnameInfo.pathname)
+      const fsPathname = removeTrailingSlash(pathnameInfo.pathname)
       return Promise.all([
         options.router.pageLoader.getPageList(),
         getClientBuildManifest(),
@@ -2388,12 +2391,6 @@ function getMiddlewareData<T extends FetchDataOutput>(
             parsedRewriteTarget.pathname = result.parsedAs.pathname
             as = parsedRewriteTarget.pathname
             Object.assign(parsedRewriteTarget.query, result.parsedAs.query)
-          }
-        } else if (!pages.includes(fsPathname)) {
-          const resolvedPathname = resolveDynamicRoute(fsPathname, pages)
-
-          if (resolvedPathname !== fsPathname) {
-            fsPathname = resolvedPathname
           }
         }
 

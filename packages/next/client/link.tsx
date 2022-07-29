@@ -15,6 +15,7 @@ import {
 import { useIntersection } from './use-intersection'
 import { getDomainLocale } from './get-domain-locale'
 import { addBasePath } from './add-base-path'
+import { removeBasePath } from './remove-base-path'
 
 // @ts-ignore useTransition exist
 const hasUseTransition = typeof React.useTransition !== 'undefined'
@@ -517,6 +518,7 @@ const Link = React.forwardRef<HTMLAnchorElement, LinkPropsReal>(
       childProps.href =
         localeDomain ||
         addBasePath(addLocale(as, curLocale, router && router.defaultLocale))
+      childProps.href = removeBasePath(childProps.href)
     }
 
     return legacyBehavior ? (

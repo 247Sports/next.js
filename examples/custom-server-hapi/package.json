@@ -6,7 +6,7 @@
     "start": "cross-env NODE_ENV=production node dist/server.js"
   },
   "dependencies": {
-    "@hapi/hapi": "^20.2.1",
+    "@hapi/hapi": "^21.0.0",
     "cross-env": "^7.0.3",
     "next": "latest",
     "react": "^17.0.2",
